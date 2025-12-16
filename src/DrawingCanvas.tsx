@@ -1,11 +1,13 @@
 import React, { useRef, useEffect, useState, useCallback } from 'react';
+import { useParams, useNavigate } from 'react-router-dom';
 import './DrawingCanvas.css';
 
 // --- 1. Konfiguracja ---
 const CANVAS_WIDTH = 800;
 const CANVAS_HEIGHT = 600;
 const PIXEL_SIZE = 10; 
-const SYNC_INTERVAL = 2000; 
+const SYNC_INTERVAL = 2000;
+const API_URL = 'http://localhost:8080/api';
 
 const COLS = Math.floor(CANVAS_WIDTH / PIXEL_SIZE);
 const ROWS = Math.floor(CANVAS_HEIGHT / PIXEL_SIZE);
@@ -39,7 +41,18 @@ const getPointsOnLine = (x0: number, y0: number, x1: number, y1: number): number
     return points;
 };
 
+const componentToHex = (c: number): string => {
+  const hex = c.toString(16);
+  return hex.length === 1 ? "0" + hex : hex;
+};
+
+const rgbToHex = (r: number, g: number, b: number): string => {
+  return "#" + componentToHex(r) + componentToHex(g) + componentToHex(b);
+};
+
 const DrawingCanvas: React.FC = () => {
+  const { id } = useParams<{ id: string }>();
+  const navigate = useNavigate();
   const canvasRef = useRef<HTMLCanvasElement>(null);
   
   // Stan całego obrazka (do wyświetlania)
@@ -48,53 +61,120 @@ const DrawingCanvas: React.FC = () => {
   // NOWOŚĆ: Stan tylko nowych zmian (do wysyłki)
   const [unsyncedGrid, setUnsyncedGrid] = useState<PixelGrid>(new Map());
 
+  const [isLoading, setIsLoading] = useState(true);
   const [isDrawing, setIsDrawing] = useState(false);
   const [lastGridPoint, setLastGridPoint] = useState<number[] | null>(null);
   const [currentTool, setCurrentTool] = useState<Tool>('pen');
   const [currentColor, setCurrentColor] = useState('#000000');
 
-  // --- Renderowanie (Bez zmian - renderuje zawsze pełny obraz) ---
-  const renderCanvas = useCallback(() => {
+  // --- Ładowanie danych z backendu ---
+  useEffect(() => {
+    if (!id) {
+      setIsLoading(false);
+      return;
+    };
+
+    setIsLoading(true);
+    fetch(`${API_URL}/images/${id}`)
+      .then(res => {
+        if (!res.ok) throw new Error('Nie udało się wczytać obrazka');
+        return res.json();
+      })
+      .then(data => {
+        const img = new window.Image();
+        img.onload = () => {
+          const tempCanvas = document.createElement('canvas');
+          tempCanvas.width = img.width;
+          tempCanvas.height = img.height;
+          const tempCtx = tempCanvas.getContext('2d', { willReadFrequently: true });
+
+          if (!tempCtx) {
+            console.error("Nie można uzyskać kontekstu 2d dla tymczasowego płótna");
+            setIsLoading(false);
+            return;
+          }
+
+          tempCtx.drawImage(img, 0, 0);
+          const imageData = tempCtx.getImageData(0, 0, img.width, img.height).data;
+          const initialGrid = new Map<string, string>();
+
+          // Obrazek z bazy ma wymiary 80x60. Każdy jego piksel odpowiada
+          // jednej komórce na naszej siatce (która też ma 80x60 komórek).
+          for (let gy = 0; gy < img.height; gy++) { // Pętla po wierszach obrazka (0-59)
+            for (let gx = 0; gx < img.width; gx++) { // Pętla po kolumnach obrazka (0-79)
+              
+              // Zabezpieczenie na wypadek, gdyby obrazek z bazy był większy niż siatka
+              if (gx >= COLS || gy >= ROWS) continue;
+
+              const pixelIndex = (gy * img.width + gx) * 4;
+
+              const r = imageData[pixelIndex];
+              const g = imageData[pixelIndex + 1];
+              const b = imageData[pixelIndex + 2];
+              const a = imageData[pixelIndex + 3];
+
+              // Jeśli piksel nie jest w pełni biały, dodajemy go do siatki
+              if (a > 0 && (r < 255 || g < 255 || b < 255)) { 
+                const key = `${gx},${gy}`;
+                initialGrid.set(key, rgbToHex(r, g, b));
+              }
+            }
+          }
+          setPixelGrid(initialGrid);
+          setIsLoading(false);
+        };
+        img.onerror = () => {
+          console.error("Błąd podczas ładowania obrazka z danych Base64.");
+          setIsLoading(false);
+        };
+        img.src = `data:image/png;base64,${data.content}`;
+      })
+      .catch(error => {
+        console.error("Błąd podczas wczytywania obrazka:", error);
+        setIsLoading(false);
+      });
+
+  }, [id]);
+
+  // --- Renderowanie Płótna ---
+  // Ten hook jest teraz jedynym źródłem prawdy o tym, jak wygląda płótno.
+  // Uruchamia się za każdym razem, gdy zmienia się siatka pikseli.
+  useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
+
+    // KROK 1: Zawsze upewnij się, że płótno ma właściwe wymiary.
+    // To rozwiązuje problem z domyślnym rozmiarem 300x150.
+    canvas.width = CANVAS_WIDTH;
+    canvas.height = CANVAS_HEIGHT;
+
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
-    ctx.clearRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+    // KROK 2: Wyczyść i narysuj tło oraz siatkę
+    ctx.fillStyle = 'white';
+    ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
 
-    // Siatka
     ctx.beginPath();
-    ctx.strokeStyle = '#e0e0e0';
+    ctx.strokeStyle = '#cccccc';
     ctx.lineWidth = 1;
     for (let x = 0; x <= CANVAS_WIDTH; x += PIXEL_SIZE) {
-        ctx.moveTo(x, 0);
-        ctx.lineTo(x, CANVAS_HEIGHT);
+      ctx.moveTo(x, 0);
+      ctx.lineTo(x, CANVAS_HEIGHT);
     }
     for (let y = 0; y <= CANVAS_HEIGHT; y += PIXEL_SIZE) {
-        ctx.moveTo(0, y);
-        ctx.lineTo(CANVAS_WIDTH, y);
+      ctx.moveTo(0, y);
+      ctx.lineTo(CANVAS_WIDTH, y);
     }
     ctx.stroke();
 
-    // Piksele
+    // KROK 3: Narysuj wszystkie piksele z aktualnego stanu
     pixelGrid.forEach((color, key) => {
-        const [gx, gy] = key.split(',').map(Number);
-        ctx.fillStyle = color;
-        ctx.fillRect(gx * PIXEL_SIZE, gy * PIXEL_SIZE, PIXEL_SIZE, PIXEL_SIZE);
+      const [gx, gy] = key.split(',').map(Number);
+      ctx.fillStyle = color;
+      ctx.fillRect(gx * PIXEL_SIZE, gy * PIXEL_SIZE, PIXEL_SIZE, PIXEL_SIZE);
     });
   }, [pixelGrid]);
-
-  useEffect(() => {
-    renderCanvas();
-  }, [pixelGrid, renderCanvas]);
-
-  useEffect(() => {
-    const canvas = canvasRef.current;
-    if (canvas) {
-        canvas.width = CANVAS_WIDTH;
-        canvas.height = CANVAS_HEIGHT;
-    }
-  }, []);
 
   // --- Logika Rysowania (Aktualizuje oba stany) ---
   const paintPixels = useCallback((targetX: number, targetY: number, prevX: number | null, prevY: number | null) => {
@@ -115,11 +195,8 @@ const DrawingCanvas: React.FC = () => {
             if (gx < 0 || gx >= COLS || gy < 0 || gy >= ROWS) return;
             const key = `${gx},${gy}`;
             
-            if (currentTool === 'eraser') {
-                newGrid.delete(key);
-            } else {
-                newGrid.set(key, currentColor);
-            }
+            const color = currentTool === 'eraser' ? '#FFFFFF' : currentColor;
+            newGrid.set(key, color);
         });
         return newGrid;
     });
@@ -132,15 +209,8 @@ const DrawingCanvas: React.FC = () => {
             if (gx < 0 || gx >= COLS || gy < 0 || gy >= ROWS) return;
             const key = `${gx},${gy}`;
 
-            if (currentTool === 'eraser') {
-                // Jeśli zmazujemy, usuwamy z bufora zmian (jeśli tam był)
-                // UWAGA: To nie wysyła komendy "skasuj stary pixel", tylko "nie wysyłaj tego nowego".
-                // Aby obsługiwać kasowanie starych pixeli, protokół JSON musiałby wspierać kolor null.
-                newUnsynced.delete(key);
-            } else {
-                // Dodajemy/Nadpisujemy pixel w buforze zmian
-                newUnsynced.set(key, currentColor);
-            }
+            const color = currentTool === 'eraser' ? '#FFFFFF' : currentColor;
+            newUnsynced.set(key, color);
         });
         return newUnsynced;
     });
@@ -173,8 +243,14 @@ const DrawingCanvas: React.FC = () => {
   };
 
   const clearCanvas = () => {
+    setUnsyncedGrid(prevUnsynced => {
+        const newUnsynced = new Map(prevUnsynced);
+        pixelGrid.forEach((_, key) => {
+            newUnsynced.set(key, '#FFFFFF');
+        });
+        return newUnsynced;
+    });
     setPixelGrid(new Map());
-    setUnsyncedGrid(new Map()); // Czyścimy też bufor zmian
   };
 
   // --- Funkcja formatująca dane do JSON ---
@@ -197,29 +273,48 @@ const DrawingCanvas: React.FC = () => {
 
   // --- Synchronizacja ---
   const syncDrawingData = useCallback(() => {
-    // 1. Sprawdź czy są zmiany
-    if (unsyncedGrid.size === 0) return;
+    if (unsyncedGrid.size === 0 || !id) return;
 
-    // 2. Przygotuj dane TYLKO z bufora zmian
     const dataToSend = formatGridToJson(unsyncedGrid);
 
     console.log("--- WYSYŁKA DELTA (Tylko nowe pixele) ---");
     console.log(`Liczba zmienionych pikseli: ${unsyncedGrid.size}`);
     console.log(JSON.stringify(dataToSend, null, 2));
 
-    // 3. Wyczyść bufor zmian po wysłaniu
-    setUnsyncedGrid(new Map());
+    fetch(`${API_URL}/images/${id}/pixels`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(dataToSend),
+    })
+    .then(res => {
+      if (!res.ok) {
+        throw new Error('Błąd synchronizacji');
+      }
+      console.log("Synchronizacja udana!");
+      // Czyścimy bufor tylko po udanej synchronizacji
+      setUnsyncedGrid(new Map());
+    })
+    .catch(error => {
+      console.error("Błąd podczas synchronizacji:", error);
+    });
 
-  }, [unsyncedGrid]); // Zależy od stanu unsyncedGrid
+  }, [unsyncedGrid, id]);
 
   useEffect(() => {
     const intervalId = setInterval(syncDrawingData, SYNC_INTERVAL);
     return () => clearInterval(intervalId);
   }, [syncDrawingData]);
 
+  if (isLoading) {
+    return <div>Wczytywanie płótna...</div>;
+  }
+
   return (
     <div className="drawing-container">
       <div className="toolbar">
+        <button onClick={() => navigate('/')} style={{ marginRight: '10px' }}>🏠 Strona główna</button>
         <button onClick={() => setCurrentTool('pen')} className={currentTool === 'pen' ? 'active' : ''}>✏️ Ołówek</button>
         <button onClick={() => setCurrentTool('eraser')} className={currentTool === 'eraser' ? 'active' : ''}>🧽 Gumka</button>
         <div className="color-picker-wrapper">

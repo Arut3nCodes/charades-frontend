@@ -1,7 +1,11 @@
-import { createRoot } from "react-dom/client";
-import App from "./App";
-import "./index.css";
+import React from 'react';
+import ReactDOM from 'react-dom/client';
+import App from './App';
+// Możesz odkomentować tę linię, jeśli masz globalny plik CSS
+import './index.css';
 
-createRoot(document.getElementById("root")!).render(
+ReactDOM.createRoot(document.getElementById('root')!).render(
+  <React.StrictMode>
     <App />
+  </React.StrictMode>
 );
