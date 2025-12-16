@@ -2,7 +2,6 @@ import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import './App.css'
 import DrawingCanvas from './DrawingCanvas';
 import HomePage from './HomePage';
-  import DrawingCanvas from "./DrawingCanvas";
 import GlobalChat from "./components/GlobalChat";
 
 function App() {
@@ -29,3 +28,5 @@ function App() {
     </Router>
   )
 }
+
+export default App;
