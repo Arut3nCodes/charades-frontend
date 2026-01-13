@@ -7,7 +7,7 @@ import './DrawingCanvas.css';
 const CANVAS_WIDTH = 800;
 const CANVAS_HEIGHT = 600;
 const PIXEL_SIZE = 10;
-const API_URL = 'http://98.66.232.178:8080/api';
+const API_URL = 'http://localhost:8080/api';
 
 const COLS = CANVAS_WIDTH / PIXEL_SIZE;
 const ROWS = CANVAS_HEIGHT / PIXEL_SIZE;
@@ -65,7 +65,6 @@ const DrawingCanvas: React.FC = () => {
   const [color, setColor] = useState('#000000');
   const [connected, setConnected] = useState(false);
   const [loading, setLoading] = useState(true);
-  const [lastSync, setLastSync] = useState<number | null>(null);
 
   /* ---- Load image ---- */
   useEffect(() => {
@@ -108,7 +107,7 @@ const DrawingCanvas: React.FC = () => {
     if (!id) return;
 
     const client = new Client({
-      webSocketFactory: () => new SockJS('http://98.66.232.178:8080/ws-stomp'),
+      webSocketFactory: () => new SockJS('http://localhost:8080/ws-stomp'),
       reconnectDelay: 5000,
       onConnect: () => {
         setConnected(true);
@@ -131,9 +130,7 @@ const DrawingCanvas: React.FC = () => {
 
     client.activate();
     stompRef.current = client;
-    return () => {
-      void client.deactivate();
-    };
+    return () => client.deactivate();
   }, [id]);
 
   /* ---- Canvas render ---- */
@@ -186,8 +183,6 @@ const DrawingCanvas: React.FC = () => {
       destination: `/app/images/${id}/pixels`,
       body: JSON.stringify(payload),
     });
-
-    setLastSync(Date.now());
 
     setBuffer(new Map());
   }, [buffer, connected, id]);
@@ -243,20 +238,6 @@ const DrawingCanvas: React.FC = () => {
         <button onClick={() => setTool('eraser')}>🧽</button>
         <input type="color" value={color}
           onChange={e => { setColor(e.target.value); setTool('pen'); }} />
-        <div className="status">
-        <span className={`badge ${connected ? "ok" : "bad"}`}>
-          {connected ? "Connected" : "Disconnected"}
-        </span>
-        <span className="badge mono">
-          buffer: {buffer.size}
-        </span>
-        <span className="badge mono">
-          {buffer.size > 0 ? "unsynced" : "synced"}
-        </span>
-        <span className="badge mono">
-          last: {lastSync ? new Date(lastSync).toLocaleTimeString() : "--"}
-        </span>
-        </div>
       </div>
 
       <canvas
