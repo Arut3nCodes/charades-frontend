@@ -53,6 +53,61 @@
     background: none;
 }
 
+/* --- STATUS BAR --- */
+.status {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-left: 12px;
+}
+
+/* --- BADGES --- */
+.badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+
+    padding: 4px 10px;
+    border-radius: 999px;
+
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+
+    background: #f4f4f5;
+    border: 1px solid #d4d4d8;
+    color: #18181b;
+
+    user-select: none;
+}
+
+/* Connected */
+.badge.ok {
+    background: #ecfdf5;
+    border-color: #34d399;
+    color: #065f46;
+}
+
+/* Disconnected */
+.badge.bad {
+    background: #fef2f2;
+    border-color: #f87171;
+    color: #7f1d1d;
+}
+
+/* monospace badge (buffer) */
+.badge.mono {
+    font-size: 11px;
+}
+
+/* optional small dot indicator */
+.badge::before {
+    content: "";
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: currentColor;
+}
 
 canvas {
     border: 2px solid #333;
