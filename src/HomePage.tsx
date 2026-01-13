@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 
-const API_URL = 'http://98.66.232.178:8080/api';
+const API_URL = 'http://localhost:8080/api';
 
 // Wymiary płótna powinny być spójne w całej aplikacji
 const GRID_WIDTH = 80;

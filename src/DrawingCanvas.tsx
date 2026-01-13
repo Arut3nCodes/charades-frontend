@@ -65,6 +65,7 @@ const DrawingCanvas: React.FC = () => {
   const [color, setColor] = useState('#000000');
   const [connected, setConnected] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [lastSync, setLastSync] = useState<number | null>(null);
 
   /* ---- Load image ---- */
   useEffect(() => {
@@ -130,7 +131,9 @@ const DrawingCanvas: React.FC = () => {
 
     client.activate();
     stompRef.current = client;
-    return () => client.deactivate();
+    return () => {
+      void client.deactivate();
+    }
   }, [id]);
 
   /* ---- Canvas render ---- */
@@ -183,6 +186,8 @@ const DrawingCanvas: React.FC = () => {
       destination: `/app/images/${id}/pixels`,
       body: JSON.stringify(payload),
     });
+
+    setLastSync(Date.now());
 
     setBuffer(new Map());
   }, [buffer, connected, id]);
@@ -238,6 +243,20 @@ const DrawingCanvas: React.FC = () => {
         <button onClick={() => setTool('eraser')}>🧽</button>
         <input type="color" value={color}
           onChange={e => { setColor(e.target.value); setTool('pen'); }} />
+        <div className="status">
+          <span className={`badge ${connected ? "ok" : "bad"}`}>
+            {connected ? "● Connected" : "● Disconnected"}
+          </span>
+          <span className="badge mono">
+            buffer: {buffer.size}
+          </span>
+          <span className="badge mono">
+            {buffer.size > 0 ? "unsynced" : "synced"}
+          </span>
+          <span className="badge mono">
+            last: {lastSync ? new Date(lastSync).toLocaleTimeString() : "--"}
+          </span>
+        </div>
       </div>
 
       <canvas
